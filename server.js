@@ -22,15 +22,22 @@ const { monitorAbandonedCarts, monitorOrderUpdates } = require("./src/middleware
 const app = express()
 
 // Middleware
-app.use(cors({
-  origin: [
-    "http://localhost:3000",
-    "https://honey-and-oak-boutique.onrender.com"
-  ],
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type"],
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "https://honey-and-oak-boutique.onrender.com",
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+    ],
+    credentials: true,
+  })
+)
+
+app.options("*", cors())
 app.use(express.json())
 app.use(cookieParser())
 
