@@ -1,0 +1,87 @@
+# =========================
+# Dependencies
+# =========================
+node_modules/
+
+# =========================
+# Environment variables
+# =========================
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+
+# Optional example file (KEEP this tracked)
+!.env.example
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# =========================
+# Runtime data / temp files
+# =========================
+pids/
+*.pid
+*.seed
+*.pid.lock
+tmp/
+temp/
+
+# =========================
+# Build output
+# =========================
+dist/
+build/
+
+# =========================
+# Coverage & reports
+# =========================
+coverage/
+.nyc_output/
+
+# =========================
+# OS / Editor junk
+# =========================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+.vscode/
+.idea/
+
+# =========================
+# Node / tooling caches
+# =========================
+.cache/
+.eslintcache
+
+# =========================
+# Docker (if used)
+# =========================
+docker-compose.override.yml
+
+# =========================
+# Certificates / keys
+# =========================
+*.pem
+*.key
+*.crt
+
+# =========================
+# Mongo / database dumps
+# =========================
+dump/
+*.archive
+*.bson
+
+# =========================
+# Stripe / secrets safety
+# =========================
+stripe-key.txt
