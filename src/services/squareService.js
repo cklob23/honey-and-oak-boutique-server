@@ -204,6 +204,22 @@ const squareService = {
       throw error
     }
   },
+
+  // Get Items
+  async getItems() {
+    try {
+      const response = await client.catalog.searchItems({
+        sortOrder: "ASC",
+        categoryIds: [
+          "NTTSJGUBR3TRDQSM5GSY5TGC",
+        ],
+      })
+      return bigIntToString(response.items)
+    } catch (error) {
+      console.error("Error getting inventory:", error)
+      throw error
+    }
+  },
 }
 
 function bigIntToString(obj) {

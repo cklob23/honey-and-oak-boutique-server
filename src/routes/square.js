@@ -161,4 +161,99 @@ router.delete("/customers/:id", async (req, res) => {
   }
 })
 
+// Get square inventory
+router.get("/inventory", async (req, res) => {
+  try {
+    const items = await squareService.getItems()
+    if (!items) return res.status(404).json({ message: "Inventory not found" })
+    res.json(items)
+  } catch (error) {
+    res.status(404).json({ message: "Inventory not found" })
+  }
+})
+
+/**
+ * POST /api/admin/square/sync-products
+ */
+router.post("/sync-products", async (req, res) => {
+  try {
+    const catalog = await squareService.getItems()
+
+    const items = catalog.filter(
+      (obj) => obj.type === "ITEM" && obj.item_data?.variations?.length
+    )
+
+    const syncedProducts = []
+
+    for (const item of items) {
+      const itemData = item.item_data
+
+      for (const variation of itemData.variations) {
+        const v = variation.item_variation_data
+        if (!v?.sku) continue // SKU REQUIRED
+
+        const price =
+          v.price_money?.amount != null
+            ? v.price_money.amount / 100
+            : 0
+
+        if (!price) continue
+
+        const productPayload = {
+          sku: v.sku,
+          name: itemData.name,
+          description:
+            itemData.description ||
+            `Imported from Square – ${itemData.name}`,
+          price,
+          category: "dresses", // 🔧 map later if needed
+          images: (v.image_ids || []).map((id) => ({
+            url: squareService.getImageUrl(id),
+            alt: itemData.name,
+          })),
+          sizes: [
+            {
+              size: v.name || "Default",
+              stock: v.track_inventory ? 0 : 999,
+            },
+          ],
+          colors: [],
+          material: null,
+          isNewArrival: true,
+          isSale: false,
+        }
+
+        const product = await Product.findOneAndUpdate(
+          { sku: v.sku },
+          {
+            $set: {
+              ...productPayload,
+              updatedAt: new Date(),
+            },
+            $setOnInsert: {
+              createdAt: new Date(),
+            },
+          },
+          {
+            new: true,
+            upsert: true,
+            runValidators: true,
+          }
+        )
+
+        syncedProducts.push(product)
+      }
+    }
+
+    res.json({
+      message: "Square products synced successfully",
+      count: syncedProducts.length,
+      products: syncedProducts,
+    })
+  } catch (err) {
+    console.error("Square sync error:", err)
+    res.status(500).json({ message: "Square sync failed" })
+  }
+})
+
 module.exports = router

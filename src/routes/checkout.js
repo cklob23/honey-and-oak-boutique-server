@@ -36,7 +36,7 @@ router.post("/", async (req, res) => {
       },
     })
 
-    // 🔑 THIS is what the frontend needs
+    // THIS is what the frontend needs
     res.json({
       clientSecret: paymentIntent.client_secret,
     })
@@ -44,6 +44,25 @@ router.post("/", async (req, res) => {
     console.error(err)
     res.status(500).json({ error: "Unable to create payment intent" })
   }
+})
+
+router.post("/preview", async (req, res) => {
+  const { cartId, customerId, amountOverride } = req.body
+
+  const amount = Math.max(amountOverride, 50)
+
+  const intent = await stripe.paymentIntents.create({
+    amount,
+    currency: "usd",
+    automatic_payment_methods: { enabled: true },
+    metadata: {
+      cartId,
+      customerId,
+      mode: "preview",
+    },
+  })
+
+  res.json({ clientSecret: intent.client_secret })
 })
 
 
