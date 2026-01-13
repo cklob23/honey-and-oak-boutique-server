@@ -33,9 +33,9 @@ router.get("/google/callback", async (req, res) => {
     const { code } = req.query
     if (!code) return res.status(400).send("Missing auth code")
 
-    /**
-     *  Exchange code → tokens
-     */
+    /* ===========================
+       1. Exchange code → token
+    ============================ */
     const tokenRes = await axios.post(
       "https://oauth2.googleapis.com/token",
       {
@@ -50,77 +50,101 @@ router.get("/google/callback", async (req, res) => {
 
     const { access_token } = tokenRes.data
 
-    /**
-     *  Fetch Google profile
-     */
+    /* ===========================
+       2. Fetch Google profile
+    ============================ */
     const profileRes = await axios.get(
       "https://www.googleapis.com/oauth2/v3/userinfo",
       {
-        headers: {
-          Authorization: `Bearer ${access_token}`,
-        },
+        headers: { Authorization: `Bearer ${access_token}` },
       }
     )
 
     const {
+      sub: googleId,
       email,
       given_name: firstName,
       family_name: lastName,
     } = profileRes.data
 
-    if (!email) {
+    if (!email || !googleId) {
       return res.redirect(`${process.env.FRONTEND_URL}/auth/login`)
     }
 
-    /**
-     *  Find or create Square customer
-     */
+    /* ===========================
+       3. Find or create Square customer
+    ============================ */
     let squareCustomer = await squareService.searchCustomer(email)
-    let squareId = squareCustomer?.id || null
-    //let phoneNumber = "555-555-5555"
+    let squareCustomerId = squareCustomer?.id || null
+    const phoneNumber = "555-555-5555"
 
     if (!squareCustomer) {
-    console.log( uuidv4(),
-        email,
-        firstName,
-        lastName,
-        null)
-      const newSquareCustomer = await squareService.createCustomer(
+      const created = await squareService.createCustomer(
         uuidv4(),
         email,
         firstName,
         lastName,
         phoneNumber
       )
-      squareId = newSquareCustomer.id
+      squareCustomerId = created.id
     }
 
-    /**
-     *  Find or create Customer
-     */
-    let customer = await Customer.findOne({ email })
+    /* ===========================
+       4. Find or create Customer
+    ============================ */
+    let customer = await Customer.findOne({
+      $or: [{ email }, { googleId }],
+    })
 
     if (!customer) {
-      // SIGN UP
+      // ✅ SIGN UP via Google
       customer = new Customer({
-        squareCustomerId: squareId,
+        squareCustomerId,
+        googleId,
         email,
-        passwordHash: null, // Google users have no password
+        authProvider: "google",
+        passwordHash: null,
         firstName,
         lastName,
-        phoneNumber: null,
+        phoneNumber,
         role: "customer",
         subscribedToNewsletter: false,
         subscribedToSales: false,
       })
 
       await customer.save()
+    } else {
+      // 🛡️ Prevent hijacking local-password accounts
+      if (customer.authProvider === "local" && !customer.googleId) {
+        return res.redirect(
+          `${process.env.FRONTEND_URL}/auth/login?error=use-password-login`
+        )
+      }
+
+      // Attach Google ID if missing
+      if (!customer.googleId) {
+        customer.googleId = googleId
+        customer.authProvider = "google"
+        await customer.save()
+      }
     }
 
-    /**
-     *  Issue JWT + cookie (same as /login)
-     */
+    /* ===========================
+       5. Issue JWT
+    ============================ */
     const token = createJwt(customer._id, customer.email)
+
+    const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+
+    await Customer.updateOne(
+      { _id: customer._id },
+      {
+        $set: {
+          sessionToken: token,
+          sessionExpiry: expiry,
+        },
+      }
+    )
 
     res.cookie("session_token", token, {
       httpOnly: true,
@@ -130,22 +154,13 @@ router.get("/google/callback", async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     })
 
-    const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-    await Customer.updateOne(
-      { email },
-      {
-        $set: {
-          sessionToken: token,
-          sessionExpiry: expiry,
-        },
-      }
-    )
-
+    /* ===========================
+       6. Redirect to success
+    ============================ */
     res.redirect(`${process.env.FRONTEND_URL}/oauth/success`)
-
   } catch (err) {
     console.error("Google OAuth error:", err.response?.data || err.message)
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error" })
   }
 })
 
