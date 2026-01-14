@@ -51,7 +51,15 @@ const customerSchema = new mongoose.Schema({
   sessionToken: String,
   sessionExpiry: Date,
   lastPasswordReset: { type: Date, default: Date.now },
-
+  googleId: {
+    type: String,
+    index: true,
+  },
+  authProvider: {
+    type: String,
+    enum: ["local", "google", "local+google"],
+    default: "local",
+  },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });

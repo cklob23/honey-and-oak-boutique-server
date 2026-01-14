@@ -90,14 +90,12 @@ router.get("/google/callback", async (req, res) => {
     }
 
     /* ===========================
-       4. Find or create Customer
-    ============================ */
-    let customer = await Customer.findOne({
-      $or: [{ email }, { googleId }],
-    })
+    4. Find or create Customer
+ =========================== */
+    let customer = await Customer.findOne({ email })
 
     if (!customer) {
-      // ✅ SIGN UP via Google
+      // Brand new user (Google signup)
       customer = new Customer({
         squareCustomerId,
         googleId,
@@ -114,19 +112,25 @@ router.get("/google/callback", async (req, res) => {
 
       await customer.save()
     } else {
-      // 🛡️ Prevent hijacking local-password accounts
-      if (customer.authProvider === "local" && !customer.googleId) {
-        return res.redirect(
-          `${process.env.FRONTEND_URL}/auth/login?error=use-password-login`
-        )
-      }
-
-      // Attach Google ID if missing
+      // Existing user (email signup → link Google)
       if (!customer.googleId) {
         customer.googleId = googleId
-        customer.authProvider = "google"
-        await customer.save()
       }
+
+      // Keep original provider if local signup
+      if (!customer.authProvider || customer.authProvider === "local") {
+        customer.authProvider = "local+google"
+      }
+
+      // Fill missing profile fields if empty
+      if (!customer.firstName && firstName) customer.firstName = firstName
+      if (!customer.lastName && lastName) customer.lastName = lastName
+      if (!customer.squareCustomerId && squareCustomerId) {
+        customer.squareCustomerId = squareCustomerId
+      }
+
+      await customer.save()
+
     }
 
     /* ===========================

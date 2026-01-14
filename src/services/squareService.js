@@ -13,19 +13,25 @@ const squareService = {
     CUSTOMERS
   */
   // Create customer
-  async createCustomer({ emailAddress, firstName, lastName, phoneNumber }) {
+  async createCustomer({emailAddress, firstName, lastName, phoneNumber}) {
     const uid = uuidv4();
 
     //console.log("Square create:", emailAddress, firstName, lastName, phoneNumber);
 
     try {
-      const response = await client.customers.create({
+      const body = {
         idempotencyKey: uid,
-        emailAddress,
-        givenName: firstName,
-        familyName: lastName,
-        phoneNumber
-      });
+        emailAddress: emailAddress || undefined,
+        givenName: firstName || undefined,
+        familyName: lastName || undefined,
+        phoneNumber: phoneNumber || undefined
+      }
+
+      Object.keys(body).forEach(
+        (key) => body[key] === undefined && delete body[key]
+      )
+
+      const response = await client.customers.create(body);
       const customer = response.customer
       return bigIntToString(customer)
     } catch (error) {

@@ -1,69 +1,110 @@
 const express = require("express")
 const router = express.Router()
 const stripe = require("../services/stripe")
-const Customer = require("../models/Customer")
 const Cart = require("../models/Cart")
 
 /**
  * POST /api/checkout
- * Creates Stripe Checkout Session
+ * Creates a Stripe PaymentIntent based on cart + shipping + tax
  */
 router.post("/", async (req, res) => {
   try {
-    const { cartId, customerId } = req.body
+    const { cartId, shipping = 0, email } = req.body
+
+    if (!cartId) {
+      return res.status(400).json({ error: "Missing cartId" })
+    }
 
     const cart = await Cart.findById(cartId)
-    if (!cart) return res.status(404).json({ error: "Cart not found" })
+    if (!cart) {
+      return res.status(404).json({ error: "Cart not found" })
+    }
 
-    const customer = await Customer.findById(customerId)
-    if (!customer) return res.status(404).json({ error: "Customer not found" })
-
-    const amount = Math.round(
-      cart.items.reduce(
-        (sum, item) => sum + item.price * item.quantity,
-        0
-      ) * 100
+    // Calculate totals server-side (authoritative)
+    const subtotal = cart.items.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0
     )
+
+    const taxRate = 0.07
+    const tax = subtotal * taxRate
+    const total = subtotal + tax + shipping
+
+    // Stripe requires integer cents
+    let amount = Math.round(total * 100)
+
+    // Stripe minimum (50¢ USD)
+    amount = Math.max(amount, 50)
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount,
       currency: "usd",
       automatic_payment_methods: { enabled: true },
-      receipt_email: customer.email,
+      receipt_email: email || undefined,
       metadata: {
         cartId: cart._id.toString(),
-        customerId: customer._id.toString(),
+        shipping: shipping.toString(),
+        subtotal: subtotal.toFixed(2),
+        tax: tax.toFixed(2),
       },
     })
 
-    // THIS is what the frontend needs
-    res.json({
-      clientSecret: paymentIntent.client_secret,
-    })
+    res.json({ clientSecret: paymentIntent.client_secret })
   } catch (err) {
-    console.error(err)
+    console.error("Checkout error:", err)
     res.status(500).json({ error: "Unable to create payment intent" })
   }
 })
 
+/**
+ * POST /api/checkout/preview
+ * Creates a Stripe PaymentIntent preview for side cart based on cart + shipping + tax
+ */
 router.post("/preview", async (req, res) => {
-  const { cartId, customerId, amountOverride } = req.body
+  try {
+    const { cartId, totalCents } = req.body
 
-  const amount = Math.max(amountOverride, 50)
+    if (!cartId) {
+      return res.status(400).json({ error: "Missing cartId" })
+    }
 
-  const intent = await stripe.paymentIntents.create({
-    amount,
-    currency: "usd",
-    automatic_payment_methods: { enabled: true },
-    metadata: {
-      cartId,
-      customerId,
-      mode: "preview",
-    },
-  })
+    const cart = await Cart.findById(cartId)
+    if (!cart) {
+      return res.status(404).json({ error: "Cart not found" })
+    }
 
-  res.json({ clientSecret: intent.client_secret })
+    // Calculate totals server-side (authoritative)
+    const subtotal = cart.items.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0
+    )
+
+    const taxRate = 0.07
+    const tax = subtotal * taxRate
+    const shipping = subtotal > 100 ? 0 : 10
+    const total = subtotal + tax + shipping
+
+    // Stripe requires integer cents
+    let amount = Math.round(total * 100)
+
+    // Stripe minimum (50¢ USD)
+    amount = Math.max(amount, 50)
+
+    console.log(amount)
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount,
+      currency: "usd",
+      automatic_payment_methods: { enabled: true },
+      metadata: {
+        cartId: cart._id.toString(),
+      },
+    })
+
+    res.json({ clientSecret: paymentIntent.client_secret })
+  } catch (err) {
+    console.error("Checkout error:", err)
+    res.status(500).json({ error: "Unable to create payment intent" })
+  }
 })
-
 
 module.exports = router
