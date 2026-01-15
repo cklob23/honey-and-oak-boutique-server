@@ -26,7 +26,15 @@ router.post("/", async (req, res) => {
       0
     )
 
-    const taxRate = 0.07
+    const taxRate = await stripe.taxRates.create({
+      display_name: 'Sales Tax',
+      inclusive: false,
+      percentage: 7.0,
+      country: 'US',
+      state: 'GA',
+      jurisdiction: 'US - GA',
+      description: 'GA Sales Tax',
+    });
     const tax = subtotal * taxRate
     const total = subtotal + tax + shipping
 

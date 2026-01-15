@@ -13,10 +13,10 @@ const squareService = {
     CUSTOMERS
   */
   // Create customer
-  async createCustomer({emailAddress, firstName, lastName, phoneNumber}) {
+  async createCustomer(emailAddress, firstName, lastName, phoneNumber) {
     const uid = uuidv4();
 
-    //console.log("Square create:", emailAddress, firstName, lastName, phoneNumber);
+    console.log("Square create:", emailAddress, firstName, lastName, phoneNumber);
 
     try {
       const body = {

@@ -79,18 +79,18 @@ router.get("/customers/search/:id", async (req, res) => {
 
 // Create customer
 router.post("/customers", async (req, res) => {
-  const { firstName, lastName, emailAddress, phoneNumber } = req.body;
+  const { firstName, lastName, emailAddress, phoneNumber } = req.body
   //console.log(firstName, lastName, email, phoneNumber)
   try {
     // 1. Create in Square
-    const squareRes = await squareService.createCustomer({
+    const squareRes = await squareService.createCustomer(
       firstName,
       lastName,
       emailAddress,
       phoneNumber,
-    });
+    )
 
-    const sq = squareRes;
+    const sq = squareRes
     //console.log(sq)
     // 2. Create in Mongo (Honey & Oak)
     const ho = await Customer.create({
@@ -100,12 +100,12 @@ router.post("/customers", async (req, res) => {
       lastName,
       phoneNumber,
       role: "customer",
-    });
+    })
 
     res.json({
       square: sq,
       honeyOak: ho,
-    });
+    })
   } catch (err) {
     console.error(err);
     res.status(400).json({ message: "Failed to create customer" });

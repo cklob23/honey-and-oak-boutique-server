@@ -74,20 +74,19 @@ router.get("/google/callback", async (req, res) => {
     /* ===========================
        3. Find or create Square customer
     ============================ */
-    let squareCustomer = await squareService.searchCustomer(email)
-    let squareCustomerId = squareCustomer?.id || null
-    const phoneNumber = "555-555-5555"
+    const existingSquareCustomer = await squareService.searchCustomer(email)
+    let squareCustomerId = existingSquareCustomer?.id || null
+    let phoneNumber = null
 
-    if (!squareCustomer) {
-      const created = await squareService.createCustomer(
-        uuidv4(),
+    if (!existingSquareCustomer) {
+      const squareCustomer = await squareService.createCustomer(
         email,
         firstName,
         lastName,
-        phoneNumber
-      )
-      squareCustomerId = created.id
+        phoneNumber)
+      squareCustomerId = squareCustomer.id
     }
+
 
     /* ===========================
     4. Find or create Customer

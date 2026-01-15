@@ -4,7 +4,6 @@ const Customer = require("../models/Customer")
 const { hashPassword, verifyPassword } = require("../utils/hash.js")
 const { createJwt, verifyJwt } = require("../utils/jwt.js")
 const squareService = require("../services/squareService")
-const { v4: uuidv4 } = require('uuid');
 
 /**
  * POST /api/auth/signup
@@ -19,7 +18,7 @@ router.post("/signup", async (req, res) => {
     let squareId = existingSquareCustomer?.id || null
 
     if (!existingSquareCustomer) {
-      const squareCustomer = await squareService.createCustomer(uuidv4(),
+      const squareCustomer = await squareService.createCustomer(
         email,
         firstName,
         lastName,
