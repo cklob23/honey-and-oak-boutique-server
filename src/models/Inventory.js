@@ -6,13 +6,17 @@ const inventorySchema = new mongoose.Schema({
     ref: "Product",
     required: true,
   },
-  size: {
+  sku: {
     type: String,
     required: true,
+    unique: true,
+    index: true,
+  },
+  size: {
+    type: String,
   },
   color: {
     type: String,
-    required: true,
   },
   quantity: {
     type: Number,

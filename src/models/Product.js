@@ -1,10 +1,6 @@
 const mongoose = require("mongoose")
 
 const productSchema = new mongoose.Schema({
-  sku: {
-    type: String,
-    required: true,
-  },
   name: {
     type: String,
     required: true,
@@ -38,6 +34,7 @@ const productSchema = new mongoose.Schema({
     {
       size: String,
       stock: Number,
+      sku: String,
     },
   ],
   colors: [String],
