@@ -382,29 +382,33 @@ router.post("/products", async (req, res) => {
     const product = new Product(req.body)
     await product.save()
 
-    // Auto-create inventory entries for each size/color combination
-    if (product.sizes && product.colors) {
+    if (product.sizes?.length && product.colors?.length) {
+      const inventoryDocs = []
+
       for (const sizeObj of product.sizes) {
-        for (const colorObj of product.colors) {
-          const inventory = new Inventory({
+        for (const color of product.colors) {
+          inventoryDocs.push({
             productId: product._id,
             size: sizeObj.size,
             sku: sizeObj.sku,
-            color: colorObj.name,
-            quantity: sizeObj.stock || 0,
-            restockThreshold: 10,
-            location: "Main Warehouse",
+            color,
+            quantity: sizeObj.stock ?? 0,
+            restockThreshold: 1,
           })
-          await inventory.save()
         }
       }
+
+      // Insert all at once (much faster + atomic-ish)
+      await Inventory.insertMany(inventoryDocs, { ordered: false })
     }
 
     res.status(201).json(product)
   } catch (error) {
+    console.error(error)
     res.status(500).json({ error: error.message })
   }
 })
+
 
 // Update product
 router.put("/products/:id", async (req, res) => {
