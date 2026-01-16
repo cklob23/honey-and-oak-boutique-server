@@ -1,18 +1,37 @@
+/**
+ * Square Checkout Router - Express.js backend route
+ * Replace your existing checkout router with this for Square integration
+ *
+ * Required environment variables:
+ * - SQUARE_ACCESS_TOKEN (production) or SQUARE_ACCESS_TOKEN_S (sandbox)
+ * - SQUARE_ENVIRONMENT ('production' or 'sandbox')
+ * - SQUARE_LOCATION_ID
+ */
+
 const express = require("express")
 const router = express.Router()
-const stripe = require("../services/stripe")
+const squareService = require("../services/squareService")
 const Cart = require("../models/Cart")
 
+// Helper to handle BigInt serialization
+BigInt.prototype.toJSON = function () {
+  return this.toString()
+}
+
 /**
- * POST /api/checkout
- * Creates a Stripe PaymentIntent based on cart + shipping + tax
+ * POST /api/checkout/square
+ * Process payment using Square Web Payments SDK token
  */
-router.post("/", async (req, res) => {
+router.post("/square", async (req, res) => {
   try {
-    const { cartId, shipping = 0, email } = req.body
+    const { cartId, sourceId, email, shipping = 0, deliveryMethod, verificationToken } = req.body
 
     if (!cartId) {
       return res.status(400).json({ error: "Missing cartId" })
+    }
+
+    if (!sourceId) {
+      return res.status(400).json({ error: "Missing payment token" })
     }
 
     const cart = await Cart.findById(cartId)
@@ -21,49 +40,58 @@ router.post("/", async (req, res) => {
     }
 
     // Calculate totals server-side (authoritative)
-    const subtotal = cart.items.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    )
+    const subtotal = cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0)
 
     const taxRate = 0.0775
     const tax = subtotal * taxRate
     const total = subtotal + tax + shipping
 
-    // Stripe requires integer cents
-    let amount = Math.round(total * 100)
+    // Square requires integer cents
+    const amountCents = Math.round(total * 100)
 
-    // Stripe minimum (50¢ USD)
-    amount = Math.max(amount, 50)
+    // Square minimum is typically $1.00 (100 cents)
+    const finalAmount = Math.max(amountCents, 100)
 
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount,
-      currency: "usd",
-      automatic_payment_methods: { enabled: true },
-      description: 'Thanks for your purchase!',
-      receipt_email: email || undefined,
-      metadata: {
-        cartId: cart._id.toString(),
-        shipping: shipping.toString(),
-        subtotal: subtotal.toFixed(2),
-        tax: tax.toFixed(2),
-      },
-    })
+    // Process payment with Square
+    const payment = await squareService.processPayment(sourceId, finalAmount, email)
 
-    res.json({ clientSecret: paymentIntent.client_secret })
+    if (payment) {
+      // Payment successful
+      res.json({
+        success: true,
+        paymentId: payment.id,
+        status: payment.status,
+        receiptUrl: payment.receiptUrl,
+        metadata: {
+          cartId: cart._id.toString(),
+          shipping: shipping.toString(),
+          subtotal: subtotal.toFixed(2),
+          tax: tax.toFixed(2),
+          total: total.toFixed(2),
+          deliveryMethod,
+        },
+      })
+    } else {
+      res.status(400).json({
+        success: false,
+        error: "Payment processing failed",
+      })
+    }
   } catch (err) {
-    console.error("Checkout error:", err)
-    res.status(500).json({ error: "Unable to create payment intent" })
+    console.error("Square checkout error:", err)
+    res.status(500).json({
+      error: err.message || "Unable to process payment",
+    })
   }
 })
 
 /**
- * POST /api/checkout/preview
- * Creates a Stripe PaymentIntent preview for side cart based on cart + shipping + tax
+ * POST /api/checkout/square/preview
+ * Creates a payment preview for side cart
  */
-router.post("/preview", async (req, res) => {
+router.post("/square/preview", async (req, res) => {
   try {
-    const { cartId, email } = req.body
+    const { cartId } = req.body
 
     if (!cartId) {
       return res.status(400).json({ error: "Missing cartId" })
@@ -75,94 +103,150 @@ router.post("/preview", async (req, res) => {
     }
 
     // Calculate totals server-side (authoritative)
-    const subtotal = cart.items.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    )
+    const subtotal = cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0)
 
     const taxRate = 0.07
     const tax = subtotal * taxRate
     const shipping = subtotal > 100 ? 0 : 10
     const total = subtotal + tax + shipping
 
-    // Stripe requires integer cents
-    let amount = Math.round(total * 100)
-
-    // Stripe minimum (50¢ USD)
-    amount = Math.max(amount, 50)
-
-    console.log(amount)
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount,
-      currency: "usd",
-      automatic_payment_methods: { enabled: true },
-      description: 'Thanks for your purchase!',
-      receipt_email: email || undefined,
-      metadata: {
-        cartId: cart._id.toString(),
-      },
+    res.json({
+      subtotal: subtotal.toFixed(2),
+      tax: tax.toFixed(2),
+      shipping: shipping.toFixed(2),
+      total: total.toFixed(2),
+      totalCents: Math.round(total * 100),
     })
-
-    res.json({ clientSecret: paymentIntent.client_secret })
   } catch (err) {
-    console.error("Checkout error:", err)
-    res.status(500).json({ error: "Unable to create payment intent" })
+    console.error("Checkout preview error:", err)
+    res.status(500).json({ error: "Unable to calculate totals" })
   }
 })
 
-router.post("/create-checkout-session", async (req, res) => {
+/**
+ * POST /api/checkout/square/direct
+ * Process direct product purchase (Apple Pay from product page)
+ */
+router.post("/square/direct", async (req, res) => {
+  try {
+    const {
+      sourceId,
+      productId,
+      quantity,
+      size,
+      color,
+      customerId,
+      email,
+      amountCents,
+      currency,
+      paymentMethod,
+      shippingAddress,
+    } = req.body
 
-  const { cartId, email } = req.body
+    if (!sourceId) {
+      return res.status(400).json({ error: "Missing payment token" })
+    }
 
-  if (!cartId) {
-    return res.status(400).json({ error: "Missing cartId" })
+    if (!productId) {
+      return res.status(400).json({ error: "Missing productId" })
+    }
+
+    // Fetch the product to verify pricing
+    const Product = require("../models/Product")
+    const product = await Product.findById(productId)
+
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" })
+    }
+
+    // Recalculate server-side for security
+    const itemTotal = product.price * quantity
+    const taxRate = 0.07
+    const tax = itemTotal * taxRate
+    const shipping = itemTotal > 100 ? 0 : 10
+    const total = itemTotal + shipping + tax
+    const serverAmountCents = Math.round(total * 100)
+
+    // Verify amount matches (allow small rounding difference)
+    if (Math.abs(serverAmountCents - amountCents) > 2) {
+      return res.status(400).json({
+        error: "Price mismatch - please refresh and try again",
+      })
+    }
+
+    // Process payment with Square
+    const payment = await squareService.processPayment(sourceId, serverAmountCents, email)
+
+    if (payment) {
+      // Create order record
+      const Order = require("../models/Order")
+      const order = new Order({
+        customerId: customerId || null,
+        email,
+        items: [
+          {
+            productId: product._id,
+            name: product.name,
+            price: product.price,
+            quantity,
+            size,
+            color,
+            image: product.images?.[0]?.url,
+          },
+        ],
+        subtotal: itemTotal,
+        tax,
+        shipping,
+        total,
+        paymentId: payment.id,
+        paymentMethod,
+        status: "paid",
+        shippingAddress,
+      })
+
+      await order.save()
+
+      res.json({
+        success: true,
+        paymentId: payment.id,
+        orderId: order._id,
+        status: payment.status,
+        receiptUrl: payment.receiptUrl,
+      })
+    } else {
+      res.status(400).json({
+        success: false,
+        error: "Payment processing failed",
+      })
+    }
+  } catch (err) {
+    console.error("Square direct checkout error:", err)
+    res.status(500).json({
+      error: err.message || "Unable to process payment",
+    })
   }
-
-  const cart = await Cart.findById(cartId)
-  if (!cart) {
-    return res.status(404).json({ error: "Cart not found" })
-  }
-
-  // Calculate totals server-side (authoritative)
-  const subtotal = cart.items.reduce(
-    (sum, item) => sum + item.price * item.quantity,
-    0
-  )
-
-  const taxRate = 0.07
-  const tax = subtotal * taxRate
-  const shipping = subtotal > 100 ? 0 : 10
-  const total = subtotal + tax + shipping
-
-  const session = await stripe.checkout.sessions.create({
-    ui_mode: "custom",
-    line_items: [
-      {
-        // Provide the exact Price ID (for example, price_1234) of the product you want to sell
-        price: "price_1SpdrsPGSLhJbuCVvzq9SVKi",
-        quantity: 1,
-      },
-    ],
-    mode: 'payment',
-    return_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-    automatic_tax: { enabled: true },
-    description: 'Thanks for your purchase!',
-    receipt_email: email || undefined,
-  })
-
-  res.json({ clientSecret: session.client_secret })
 })
 
-router.get("/session-status", async (req, res) => {
+/**
+ * GET /api/checkout/square/payment/:paymentId
+ * Retrieve payment details by ID
+ */
+router.get("/square/payment/:paymentId", async (req, res) => {
+  try {
+    const { paymentId } = req.params
+    const payment = await squareService.getPayment(paymentId)
 
-  const session = await stripe.checkout.sessions.retrieve(req.query.session_id, { expand: ["payment_intent"] })
-
-  res.json({
-    status: session.status,
-    payment_status: session.payment_status,
-    payment_intent_id: session.payment_intent.id,
-    payment_intent_status: session.payment_intent.status
-  })
+    res.json({
+      id: payment.id,
+      status: payment.status,
+      amountMoney: payment.amountMoney,
+      receiptUrl: payment.receiptUrl,
+      createdAt: payment.createdAt,
+    })
+  } catch (err) {
+    console.error("Get payment error:", err)
+    res.status(404).json({ error: "Payment not found" })
+  }
 })
 
 module.exports = router
