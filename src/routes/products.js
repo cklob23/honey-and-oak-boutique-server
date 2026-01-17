@@ -61,37 +61,11 @@ router.post("/", async (req, res) => {
   try {
     const product = new Product(req.body)
     await product.save()
-    const inventoryItems = []
-
-    // Create inventory per size + color
-    for (const color of product.colors) {
-      for (const sizeEntry of product.sizes) {
-        inventoryItems.push({
-          productId: product._id,
-          size: sizeEntry.size,
-          sku: sizeEntry.sku,
-          color,
-          quantity: sizeEntry.stock || 0,
-          reserved: 0,
-          restockThreshold: 10,
-        })
-      }
-    }
-
-    // Insert inventory records
-    await Inventory.insertMany(inventoryItems, { session })
-
-    await session.commitTransaction()
-    session.endSession()
 
     res.status(201).json({
       product,
-      inventoryCreated: inventoryItems.length,
     })
   } catch (error) {
-    await session.abortTransaction()
-    session.endSession()
-
     console.error("Product creation failed:", error)
     res.status(400).json({ error: error.message })
   }
@@ -178,7 +152,11 @@ router.delete("/:id", async (req, res) => {
   try {
     const product = await Product.findByIdAndDelete(req.params.id)
     if (!product) return res.status(404).json({ error: "Product not found" })
-    res.json({ message: "Product deleted" })
+
+    // Also delete associated inventory
+    await Inventory.deleteMany({ productId: req.params.id })
+
+    res.json({ message: "Product deleted successfully" })
   } catch (error) {
     res.status(500).json({ error: error.message })
   }

@@ -143,7 +143,35 @@ const squareService = {
     }
   },
 
-  // Include existing methods from your original squareService...
+  /**
+  * List customers
+  */
+  async listCustomers() {
+    try {
+      let allCustomers = [];
+      let cursor = null;
+
+      do {
+        // Call Square API with the cursor if it exists
+        const response = await client.customers.list({
+          cursor: cursor || undefined,
+        });
+
+        const customers = response.response.customers || [];
+        allCustomers = allCustomers.concat(customers);
+
+        cursor = response.response.cursor || null; // If null, pagination ends
+      } while (cursor);
+
+      //console.log(`Total customers fetched: ${allCustomers.length}`);
+
+      return bigIntToString(allCustomers);
+
+    } catch (error) {
+      console.error("Error listing customers:", error);
+      throw error;
+    }
+  },
 
   /**
    * Create customer
@@ -170,9 +198,21 @@ const squareService = {
     }
   },
 
-  /**
-   * Search for customer by email
-   */
+  // Retrieve customer
+  async retrieveCustomer(customerId) {
+    try {
+      const response = await client.customers.get({
+        customerId
+      });
+      const customer = response.customer
+      return bigIntToString(customer)
+    } catch (error) {
+      console.error("Error retrieving customer:", error.statusCode, error.errors)
+      throw error
+    }
+  },
+
+  // Search for customer
   async searchCustomer(email) {
     try {
       const response = await client.customers.search({
@@ -183,11 +223,23 @@ const squareService = {
             },
           },
         },
-      })
+      });
       const customer = response.customers[0] || {}
       return bigIntToString(customer)
     } catch (error) {
       return null
+    }
+  },
+
+  // Delete customer
+  async deleteCustomer(customerId) {
+    try {
+      await client.customers.delete({
+        customerId
+      });
+    } catch (error) {
+      console.error("Error deleting customer:", error.statusCode, error.errors)
+      throw error
     }
   },
 

@@ -243,21 +243,21 @@ router.get("/inventory", async (req, res) => {
 // Create inventory item
 router.post("/inventory", async (req, res) => {
   try {
-    const { productId, size, color, quantity, restockThreshold, location } = req.body
+    const { productId, sku, size, color, quantity, restockThreshold } = req.body
 
     // Check if inventory entry already exists
-    const existing = await Inventory.findOne({ productId, size, color })
+    const existing = await Inventory.findOne({ productId, sku, size, color })
     if (existing) {
-      return res.status(400).json({ error: "Inventory entry already exists for this product/size/color" })
+      return res.status(400).json({ error: "Inventory entry already exists for this product/size/color/sku" })
     }
 
     const inventory = new Inventory({
       productId,
+      sku,
       size,
       color,
       quantity: quantity || 0,
-      restockThreshold: restockThreshold || 10,
-      location: location || "Main Warehouse",
+      restockThreshold: restockThreshold || 1
     })
 
     await inventory.save()
